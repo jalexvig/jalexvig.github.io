@@ -9,7 +9,7 @@ draft: true
 
 # objective
 
-We want to match user generated strings describing a place against documents stored on an elasticsearch server. Addtionally, some strings are associated with an inferred state code that is derived contextually (e.g. using the site the user is browsing).
+We want to match user generated strings describing a place against documents stored on an elasticsearch server. Additionally, some strings are associated with an inferred state code that is derived contextually (e.g. using the site the user is browsing).
 
 # setup
 
@@ -53,7 +53,7 @@ l = list(filter(None, l))
 This turns `"TAMPA, FL 33601"` into `["tampa", "fl", "33601"]`.
 
 1. As postal codes seem to always come last, we check to see if the last element in the list is composed of digits, and if so, consume it. We use the first five digits as the postal code (to distill a zip+4 code). If only two digits exist, we will ignore this string entirely as that is indicative of a place in another country. So `"Hyderabad 02"` will be ignored.
-2. The next element(s) to be consumed is(are) represent the state. This is either a state abbreviation (e.g. "nc") or the state name in full (e.g. "north carolina"). We look backwards through the list to see if a state or an abbreviation exists. A full state name is translated to its state code through a predefined dictionary.
+2. The next element(s) to be consumed represent(s) the state. This is either a state abbreviation (e.g. "nc") or the state name in full (e.g. "north carolina"). We look backwards through the list to see if a state or an abbreviation exists. A full state name is translated to its state code through a predefined dictionary.
 3. The city is assumed to comprise the remaining elements.
 
 So for example
@@ -151,7 +151,7 @@ In the sections below, we give results across 5000 training examples for each of
 
 ### pseudo-labeling
 
-We would like to examine misclassified place descriptions. In order to do this, however, we need a labeled set. Since we don't have this we can use descriptions that contain postal codes and assume the postal code is correct. For such a place description, we find the document with the corresponding postal code and see if it's city/cityAliases match the city provided by the user. Similarly we see if the state provided by the user and the inferred state match the state from the document.
+We would like to examine misclassified place descriptions. In order to do this, however, we need a labeled set. Since we don't have this we can use descriptions that contain postal codes and assume the postal code is correct. For such a place description, we find the document with the corresponding postal code and see if its city/cityAliases fields match the city provided by the user. Similarly we see if the state provided by the user and the inferred state match the state from the document.
 
 *Implementation note*: to do this, we use the edit distance to see if the city is represented by the document selected. The distance cap for matches was set to 2.
 
