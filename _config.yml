@@ -1,8 +1,8 @@
 # Site wide configuration
 
-title: Alex's blog.
+# title: Alex's coding blog
 locale: en_US
-description: Coding blog.
+# description: Coding blog.
 # logo: site-logo.png
 search: true
 url: http://jalexvig.github.io

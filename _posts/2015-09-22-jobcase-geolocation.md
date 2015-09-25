@@ -4,7 +4,6 @@ title: "jobcase geolocation exercise"
 categories: jobcase
 excerpt: "User generated place string matching"
 tags: [python3, elasticsearch]
-draft: true
 ---
 
 # objective
