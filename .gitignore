@@ -7,3 +7,6 @@ _site
 codekit-config.json
 Gemfile.lock
 node_modules
+.sass-cache
+*.swp
+.jekyll-metadata
