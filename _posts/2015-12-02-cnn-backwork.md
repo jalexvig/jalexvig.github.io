@@ -70,29 +70,23 @@ layers_label = [tf.constant(a, name='layer{}_fixed_label'.format(idx)) for idx, 
 
 ##### building cost
 
-Next we build the cost with respect to these neuronal values across the training data.
+At each layer the two costs are built with respect to these neuronal values at that layer across the training data. The costs at each layer can be broken into two parts.
+
+1. `reference_cost` represents the similarity between patterns of activity for images being backworked and the patterns of activity across the training set. This will be used to select for images that "look" less like the training data to the net.
+2. `batch_cost` represents the similarity between patterns of activity across all images in the batch.
 
 {% highlight python %}
-costs = []
-for layer, layer_label in zip(layers, layers_label):
-    cost_tup = get_cost_from_layer(layer, layer_label, label, sim_coeff=sim_coeff, prev_coeff=prev_coeff)
-    costs.append(cost_tup)
-{% endhighlight %}
-
-It would be nice to be able to process inputs in batches, but as the batchsize gets large, I found collisions in the artifacts found. In other words, different input images sometimes converged to similar values that minimize the cost. To avoid this phenomenon, we add a cost for similarities between the inputs at each layer. For each layer, the relative importance of maximizing difference between an input and the training data is encoded by `prev_coeff` and the relative importance of maximizing the difference between inputs in the batch is encoded by `sim_coeff`.
-
-{% highlight python %}
-def get_cost_from_layer(layer, layer_label, label, prev_coeff=1, sim_coeff=1):
+def get_cost_from_layer(layer, layer_label, label):
 
     # For convolutional layers, layer has dimensionality (num_gen_examples, 28, 28, 1) and
     # layer_label has dimensionality (num_training_examples_label, 28, 28, 1)
 
-    layer2 = tf.expand_dims(layer, 1)
-    layer_label2 = tf.expand_dims(layer_label, 1)
     layer_name = layer.name.lower()
 
-    prev_dist_term = tf.pow(layer - layer_label2, 2)
-    similarity_dist_term = tf.pow(layer - layer2, 2)
+    # reference_dist_tensor is the tensor that represents the distance from generated images to the reference images
+    # batch_dist_tensor is the tensor that represents the distance from generated images to other images in the batch
+    reference_dist_tensor = tf.pow(layer - tf.expand_dims(layer_label, 1), 2)
+    batch_dist_tensor = tf.pow(layer - tf.expand_dims(layer, 1), 2)
 
     if 'softmax' in layer_name:
         # Average all probabilities of guessing the wrong answer
@@ -102,9 +96,9 @@ def get_cost_from_layer(layer, layer_label, label, prev_coeff=1, sim_coeff=1):
         return cost,
 
     elif 'inputs' in layer_name or 'conv' in layer_name:
-        # prev_dist_term has dimensionality (num_training_examples_label, num_gen_examples, 28, 28, 1)
+        # reference_dist_tensor has dimensionality (num_training_examples_label, num_gen_examples, 28, 28, 1)
         # Get the mean of the minimum distances of generated inputs to training examples of label
-        prev_dist_term = tf.reduce_mean(prev_dist_term, reduction_indices=[2, 3, 4])
+        reference_dist_tensor = tf.reduce_mean(reference_dist_tensor, reduction_indices=[2, 3, 4])
 
     elif 'fc' in layer_name:
         pass
@@ -112,26 +106,47 @@ def get_cost_from_layer(layer, layer_label, label, prev_coeff=1, sim_coeff=1):
     else:
         raise ValueError('Unknown layer type on layer %s', layer_name)
 
-    prev_dist_term = tf.reduce_min(prev_dist_term, reduction_indices=[0])
-    prev_dist_term = tf.reduce_mean(prev_dist_term)
+    reference_dist_tensor = tf.reduce_min(reference_dist_tensor, reduction_indices=[0])
+    reference_dist_tensor = tf.reduce_mean(reference_dist_tensor)
 
-    similarity_dist_term = tf.reduce_mean(similarity_dist_term)
+    batch_dist_tensor = tf.reduce_mean(batch_dist_tensor)
 
-    prev_cost = prev_coeff / prev_dist_term
-    sim_cost = sim_coeff / similarity_dist_term
+    reference_cost = 1 / reference_dist_tensor
+    batch_cost = 1 / batch_dist_tensor
 
-    return prev_cost, sim_cost
+    return reference_cost, batch_cost
 {% endhighlight %}
 
-Finally all the costs are weighted. This is enables costs at higher layers to be treated with greater importance than lower layers. Intuitively, this makes sense to do because features at higher layers represent greater levels of abstraction. If these can be combined in ways, not induced by the training set, to yield a high probability of classification, then our net has learned some high level features that have artifacts in them. Weighting cost contributions from higher layers more also means that transformations like rotations and translations are not penalized.
+The costs are weighted according to a user-defined weighting scheme. This allows for two things
+
+1. `layer_cost_coeffs` enables costs at higher layers to be treated with greater importance than those at lower layers. Intuitively, this makes sense because features at higher layers represent greater levels of abstraction. So we would imagine that it would be better to find high level abstractions that are dissimilar to the high level abstractions representing data in the training set as this is more likely to correspond to meaningful dissimilarities to humans.
+2. `reference_cost_coeff` represents the relative importance of inducing dissimilarities in the patterns of activity between examples from the batch and the training data. `batch_cost_coeff` represents the relative importance of inducing dissimilarities in the patterns of activity between examples inside the batch.\*
+
+\* This was inspired by collisions found in the batch images. Relative increases in `batch_cost_coeff` motivate the system to find different artifacts of the classifier.
 
 {% highlight python %}
-costs = [f * c for f, cost_tup in zip(cost_factors, costs) for c in cost_tup]
+costs = [get_cost_from_layer(layer, layer_label, label) for layer, layer_label in zip(layers, layers_label)]
+costs = [c for cost_tuple in costs for c in cost_tuple]
+
+weights = np.outer(layer_cost_coeffs[: -1], [reference_cost_coeff, batch_cost_coeff]).flatten()
+weights = np.append(weights, layer_cost_coeffs[-1])
+
+costs = (costs * weights)
 {% endhighlight %}
+
+# descent
+
+Using gradient descent, we can manipulate images to minimize the cost function defined above.
+
+{% highlight bash %}
+optimize_input_layer = tf.train.AdamOptimizer(learning_rate=0.01).minimize(cost)
+{% endhighlight %}
+
+We set our convergence criteria as the minimum correct classification probability over a user defined value.
 
 ### breaking out of local minima
 
-Notice that in the softmax layer, we count the cost as the mean misclassification probability across the batch. This means that many of the inputs in the batch may be strongly classified, but a few may not be able to escape the local minima they are in. To combat this, we will replace the most consistently misclassified inputs. If an input's correct classification probability has been monotonically decreasing over `num_mono_dec_saves` saves (a save is just everytime the inputs are propagated forward to obtain classification probabilities) it is reinitialized.
+Notice that in the softmax layer we count the cost as the mean misclassification probability across the batch. This means that many of the inputs in the batch may be strongly classified, but a few may not be able to escape the local minima they are in. To combat this, we will replace the most consistently misclassified inputs. If an input's correct classification probability has been monotonically decreasing over `num_mono_dec_saves` saves (a save is just everytime the inputs are propagated forward to obtain classification probabilities) then it is reinitialized.
 
 So with a mask `m` to denote which inputs need to be reinitialized, we can do the following:
 
@@ -142,7 +157,9 @@ sess.run(x.assign(input_vals))
 
 # results
 
-Here are eight input images that were put through this process for each of the 10 labels.
+The minimum correct classification probability was set to 0.999. The `reference_cost_coeff` and `batch_cost_coeff` were each set to 1/2. `layer_cost_coeffs` were intialized in the log-space, for each non-softmax layer, to `[1e-5, 1e-4, 1e-3, 1e-2]`. The penalty at the softmax layer (for misclassification) was set to `10`.
+
+Here are eight input images, with probabilities of correct classification, that were put through this process for each of the 10 labels.
 
 ![Generated misclassified]({{ site.url }}/images/misclass.png)
 
