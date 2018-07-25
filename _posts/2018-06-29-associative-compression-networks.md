@@ -84,6 +84,48 @@ One thing you may have noticed in the VAE is that the prior is just a distributi
 
 There's nothing that says the prior needs to be a marginal distribution. The key insight of this paper is to realize that we can order the data and then condition the prior distribution on the previous datum. The question then becomes how should we order the data? We compare similarity in the latent space (initialized randomly). When an input is encoded, can look at codes that are close to the encoded input and choose one. By choosing a unique code (and therefore datum) for each example in an epoch we choose an orderding for the data.
 
+#### KL derivation
+
+Since we are using a nonstandard Gaussian distribution for our prior (as parameterized by the prior network) we can't just use the VAE loss. Let's calculate the KL divergence between two Gaussians.
+
+$$ D_{KL}(q || p) = H(q, p) - H(q) $$
+
+Solving for the cross entropy first with $\left< \cdots \right>_q$ being the expecation under $q$:
+
+$$
+\begin{align}
+H(q, p) &= - \left< \log \left( \frac{1}{\sigma_p \sqrt {2 \pi}} \, \exp \left( \frac{\left( -x - \mu_{p} \right) ^ 2}{2 \sigma_p^2} \right) \right) \right>_q \\
+        &= \frac{1}{2} \log \left( \sigma_p^2 2 \pi \right) +
+           \left< \frac{x^2 - 2 \mu_p x + \mu_p^2}{2 \sigma_p^2} \right>_q \\
+        &= \frac{1}{2} \log \left( \sigma_p ^ 2 2 \pi \right) +
+           \frac{\sigma_q^2 + \mu_q^2 - 2 \mu_p \mu_q + \mu_p^2}{2 \sigma_p^2} \\
+        &= \frac{1}{2} \log \left( \sigma_p ^ 2 2 \pi \right) +
+           \frac{\sigma_q^2 + \left( \mu_q - \mu_p \right) ^ 2}{2 \sigma_p^2} \\
+\end{align}
+$$
+
+By substituting in $q$ for $p$ in the equation above, $H(q)$ is trivial:
+
+$$
+\begin{align}
+H(q) &= \frac{1}{2} \log \left( \sigma_q ^ 2 2 \pi \right) + \frac{1}{2}
+\end{align}
+$$
+
+Combining the two:
+
+$$
+\begin{align}
+D_{KL}(q || p) &= H(q, p) - H(q) \\
+               &= \frac{1}{2} \log \left( \sigma_p ^ 2 2 \pi \right) +
+                  \frac{\sigma_q^2 + \left( \mu_q - \mu_p \right) ^ 2}{2 \sigma_p^2} -
+                  \frac{1}{2} \log \left( \sigma_q ^ 2 2 \pi \right) - \frac{1}{2} \\
+               &= \log \left( \frac{\sigma_p}{\sigma_q} \right) + 
+                  \frac{\sigma_q^2 + \left( \mu_q - \mu_p \right) ^ 2}{2 \sigma_p^2} -
+                  \frac{1}{2}
+\end{align}
+$$
+
 # code
 
 The full code is available [on GitHub](https://github.com/jalexvig/associative_compression_networks).
@@ -140,6 +182,22 @@ def pick_close_neighbor(self, code: torch.Tensor) -> torch.Tensor:
     neighbor = random.choice(neighbor_codes)
 
     return neighbor
+```
+
+The loss is a straightforward implementation of the derivation above (in this case `s_q` and `s_p` are log standard deviations to prevent taking the log of a negative number):
+
+```python
+def calc_loss(x, recon, u_q, s_q, u_p, s_p):
+
+    # reconstruction
+    xent = F.binary_cross_entropy(recon, x, size_average=False)
+
+    # coding cost
+    dkl = torch.sum(s_p - s_q - 0.5 +
+                    ((2 * s_q).exp() + (u_q - u_p).pow(2)) /
+                    (2 * (2 * s_p).exp()))
+
+    return xent + dkl
 ```
 
 # results
