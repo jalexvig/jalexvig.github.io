@@ -114,9 +114,9 @@ Looking at the figure we can see that the model starts out guessing roughly unif
 
 $$
 \begin{align}
-1.03 &= 1 \ln{p} \\
-p &= e^{-1.03} \\
-p &\approx 35.70%
+1.3 &= 1 \ln{\frac{1}{p}} \\
+p &= e^{-1.3} \\
+p &\approx 27.25%
 \end{align}
 $$
 
