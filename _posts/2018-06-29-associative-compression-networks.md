@@ -8,7 +8,7 @@ tags: [machine learning, unsupervised learning]
 
 # intro
 
-Variational autoencoders (VAEs) are a type of generative model. Associative compression networks extends the idea of VAEs by ordering the training data.
+Variational autoencoders (VAEs) are a type of generative model. Associative compression networks were introduced in [a paper](https://arxiv.org/pdf/1804.02476.pdf) by Alex Graves and extend the idea of VAEs by ordering the training data.
 
 # background
 
@@ -28,22 +28,22 @@ Terms:
 
 #### information theory
 
-We calculate the the total number of bits to transmit a message. The [minimum description length principle]() says that the best description of a dataset is the one that can compress the data the best. So if we can reduce the number of bits required to compress a dataset we can find a good model of the data.
+We calculate the the total number of bits to transmit a message. The [minimum description length principle](https://en.wikipedia.org/wiki/Minimum_description_length) (MDL) says that the best description (model) of a dataset is the one that can compress the data the best. So if we can reduce the number of bits required to compress a dataset we can find a good model of the data.
 
 Bits to reconstruct $x$ from $z$:
 
 $$
 \begin{align}
-C_{recon} &= \int{q(z {\vert} x) \log{p(x {\vert} z)} dx} \\
+C_{recon} &= \int{q(z {\vert} x) \log{\frac{1}{p(x {\vert} z)}} dx} \\
           &= H(q, p)
 \end{align}
 $$
 
-Bits coming from posterior not represented in prior:
+Bits to encode $z$ with a rebate of bits (information) from the choice of $z$:
 
 $$
 \begin{align}
-C_{coding} &= \int{q(z {\vert} x) \log{q(z {\vert} x)} dx} - \int{q(z {\vert} x) \log{p(z) dx}} \\
+C_{coding} &= \int{q(z {\vert} x) \log{ \frac {1} {p(z)} dx}} - \int{q(z {\vert} x) \log{ \frac {1} {q(z {\vert} x)} } dx} \\
            &= D_{KL}(q(z {\vert} x) || p(z))
 \end{align}
 $$
@@ -78,11 +78,15 @@ $$
 
 The right hand side forms an "evidence based lower bound" (ELBO) and by maximizing it, we maximize the probability of our data.
 
+#### problem
+
+One problem with VAEs is that, with a sufficiently powerful decoder, they can learn to ignore the latent codes. The MDL says that if we can use the least number of bits then we have achieved the best hypothesis for the data. If the decoder learns to ignore $z$ and just learns $p(X)$ then $q(z\|x)$ can just learn $p(z)$. This can happen at the beginning of training when the approximate posterior ($q$) doesn't produce meaningful information on $x$. The optimization routine then just attempts to make $q$ equal to the prior ($p(z)$). As $H(X)$ is the optimal possible compression for $X$, meaningful latent codes will never be learned.
+
 ## acn
 
-One thing you may have noticed in the VAE is that the prior is just a distribution in the latent space ($p(z)$). This is typically modelled using a multivariate standard Gaussian distribution.
+One thing you may have noticed in the VAE is that the prior is just a distribution in the latent space ($p(z)$). This is typically modelled using a multivariate standard Gaussian distribution. There's nothing that says the prior needs to be a marginal distribution. The key insight of this paper is to realize that we can order the data and then condition the prior distribution on the latent variable for the previous datum. This addresses the VAE problem since each latent code for a datum informs the distribution over the next latent code. Thus transmitting the common characteristics of a segment of data is amortized over that segment.
 
-There's nothing that says the prior needs to be a marginal distribution. The key insight of this paper is to realize that we can order the data and then condition the prior distribution on the previous datum. The question then becomes how should we order the data? We compare similarity in the latent space (initialized randomly). When an input is encoded, can look at codes that are close to the encoded input and choose one. By choosing a unique code (and therefore datum) for each example in an epoch we choose an orderding for the data.
+The question then becomes how should we order the data? We compare similarity in the latent space (initialized randomly). When an input is encoded, we can look at codes that are close to the encoded input and choose one. By choosing a unique code (and therefore datum) for each example in an epoch we choose an orderding for the data.
 
 #### KL derivation
 
@@ -225,3 +229,9 @@ Here is a sequence of images from a MNIST seeded daydream:
 {:refdef: style="text-align: center;"}
 ![Daydreaming ACN](/images/associative_compression_networks/animation.gif){:height="50%" width="50%"}
 {: refdef}
+
+
+# additional resources
+
+* [The original paper](https://arxiv.org/pdf/1804.02476.pdf) by Alex Graves
+* All the code used in this post can be found [on GitHub](https://github.com/jalexvig/associative_compression_networks).
